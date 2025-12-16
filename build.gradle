@@ -24,7 +24,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     // Streamix
-    implementation 'io.github.junhyeong9812:streamix-spring-boot-starter:1.0.6'
+    implementation 'io.github.junhyeong9812:streamix-spring-boot-starter:1.0.8'
 
     // Database Drivers (모두 포함, 환경변수로 선택)
     runtimeOnly 'com.h2database:h2'
