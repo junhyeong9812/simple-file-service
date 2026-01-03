@@ -8,6 +8,15 @@ Docker 이미지로 바로 실행하여 파일 업로드/스트리밍 서비스�
 
 ---
 
+## 🆕 v2.0.0 업데이트
+
+- **6가지 파일 타입 지원**: IMAGE, VIDEO, AUDIO, DOCUMENT, ARCHIVE, OTHER
+- **파일 검증**: 크기 제한, 타입 제한 설정 가능
+- **향상된 대시보드**: 파일 타입별 미리보기 (비디오/오디오 플레이어, 이미지 뷰어)
+- **새로운 환경변수**: `STREAMIX_STORAGE_MAX_FILE_SIZE`, `STREAMIX_STORAGE_ALLOWED_TYPES`
+
+---
+
 ## 🚀 Quick Start
 
 ### Docker로 실행 (H2 인메모리)
@@ -22,11 +31,37 @@ docker run -d \
   ghcr.io/junhyeong9812/simple-file-service:latest
 ```
 
+### 파일 타입 제한하여 실행
+
+```bash
+# 이미지와 비디오만 허용
+docker run -d \
+  -p 8080:8080 \
+  -e STREAMIX_STORAGE_ALLOWED_TYPES=IMAGE,VIDEO \
+  -e STREAMIX_STORAGE_MAX_FILE_SIZE=52428800 \
+  -v ./data:/app/streamix-data \
+  --name file-service \
+  ghcr.io/junhyeong9812/simple-file-service:latest
+```
+
 ### 접속
 
 - **대시보드**: http://localhost:8080/streamix
 - **API**: http://localhost:8080/api/streamix/files
 - **H2 Console**: http://localhost:8080/h2-console
+
+---
+
+## 📁 지원 파일 타입 (v2.0.0)
+
+| 타입 | 설명 | 예시 확장자 | 대시보드 미리보기 |
+|------|------|------------|------------------|
+| `IMAGE` | 이미지 파일 | jpg, png, gif, webp | 이미지 뷰어 |
+| `VIDEO` | 비디오 파일 | mp4, webm, avi, mkv | 비디오 플레이어 |
+| `AUDIO` | 오디오 파일 | mp3, wav, flac, aac | 오디오 플레이어 |
+| `DOCUMENT` | 문서 파일 | pdf, doc, xlsx, txt | 다운로드 링크 |
+| `ARCHIVE` | 압축 파일 | zip, rar, 7z, tar.gz | 다운로드 링크 |
+| `OTHER` | 기타 파일 | 그 외 모든 파일 | 다운로드 링크 |
 
 ---
 
@@ -55,7 +90,7 @@ docker run -d \
 | `/streamix` | 메인 대시보드 (통계, 최근 업로드) |
 | `/streamix/files` | 파일 목록 (그리드/리스트 뷰) |
 | `/streamix/files/{id}` | 파일 상세/미리보기 |
-| `/streamix/monitor` | 스트리밍 모니터 |
+| `/streamix/sessions` | 스트리밍 세션 모니터 |
 
 ### API 사용 예시
 
@@ -73,6 +108,30 @@ curl -H "Range: bytes=0-1023" \
 
 # 파일 삭제
 curl -X DELETE http://localhost:8080/api/streamix/files/{id}
+```
+
+### 에러 응답 (v2.0.0)
+
+**파일 크기 초과 (413):**
+```json
+{
+  "timestamp": "2025-12-31T10:30:00",
+  "status": 413,
+  "error": "Payload Too Large",
+  "code": "FILE_SIZE_EXCEEDED",
+  "message": "File size 150MB exceeds maximum allowed size 100MB"
+}
+```
+
+**허용되지 않는 파일 타입 (400):**
+```json
+{
+  "timestamp": "2025-12-31T10:30:00",
+  "status": 400,
+  "error": "Bad Request",
+  "code": "INVALID_FILE_TYPE",
+  "message": "File type ARCHIVE is not allowed. Allowed types: [IMAGE, VIDEO]"
+}
 ```
 
 ---
@@ -132,7 +191,7 @@ services:
       - ./data:/app/streamix-data
 ```
 
-### PostgreSQL 연동
+### PostgreSQL 연동 + 파일 타입 제한
 
 ```yaml
 version: '3.8'
@@ -143,13 +202,17 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # Database
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/filedb
       - SPRING_DATASOURCE_DRIVER=org.postgresql.Driver
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=secret
       - SPRING_JPA_DDL_AUTO=update
-      - STREAMIX_STORAGE_BASE_PATH=/app/streamix-data
       - H2_CONSOLE_ENABLED=false
+      # Streamix Storage
+      - STREAMIX_STORAGE_BASE_PATH=/app/streamix-data
+      - STREAMIX_STORAGE_MAX_FILE_SIZE=104857600
+      - STREAMIX_STORAGE_ALLOWED_TYPES=IMAGE,VIDEO,AUDIO
     volumes:
       - file_data:/app/streamix-data
     depends_on:
@@ -184,16 +247,42 @@ volumes:
 | `SPRING_JPA_DDL_AUTO` | `create-drop` | DDL 전략 |
 | `H2_CONSOLE_ENABLED` | `true` | H2 콘솔 활성화 |
 
-### Streamix
+### Streamix Storage (v2.0.0 확장)
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | `STREAMIX_STORAGE_BASE_PATH` | `./streamix-data` | 파일 저장 경로 |
 | `STREAMIX_STORAGE_MAX_FILE_SIZE` | `104857600` | 최대 파일 크기 (바이트) |
+| `STREAMIX_STORAGE_ALLOWED_TYPES` | *(empty)* | 허용 파일 타입 (빈 값 = 전체 허용) |
+
+**STREAMIX_STORAGE_ALLOWED_TYPES 설정 예시:**
+```bash
+# 전체 허용 (기본값)
+STREAMIX_STORAGE_ALLOWED_TYPES=
+
+# 이미지와 비디오만 허용
+STREAMIX_STORAGE_ALLOWED_TYPES=IMAGE,VIDEO
+
+# 미디어 파일만 허용
+STREAMIX_STORAGE_ALLOWED_TYPES=IMAGE,VIDEO,AUDIO
+
+# 문서와 압축파일만 허용
+STREAMIX_STORAGE_ALLOWED_TYPES=DOCUMENT,ARCHIVE
+```
+
+### Streamix Thumbnail
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
 | `STREAMIX_THUMBNAIL_ENABLED` | `true` | 썸네일 생성 활성화 |
 | `STREAMIX_THUMBNAIL_WIDTH` | `320` | 썸네일 너비 |
 | `STREAMIX_THUMBNAIL_HEIGHT` | `180` | 썸네일 높이 |
 | `STREAMIX_THUMBNAIL_FFMPEG_PATH` | `ffmpeg` | FFmpeg 경로 |
+
+### Streamix API & Dashboard
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
 | `STREAMIX_API_ENABLED` | `true` | REST API 활성화 |
 | `STREAMIX_API_BASE_PATH` | `/api/streamix` | API 기본 경로 |
 | `STREAMIX_DASHBOARD_ENABLED` | `true` | 대시보드 활성화 |
@@ -215,6 +304,13 @@ volumes:
 
 - Java 25+
 - Gradle 8.x+
+
+### 환경 변수 설정
+
+```bash
+cp .env.example .env
+# .env 파일 편집
+```
 
 ### 빌드 & 실행
 
@@ -239,7 +335,7 @@ docker run -p 8080:8080 simple-file-service
 
 - **Java 25**
 - **Spring Boot 4.0**
-- **Streamix 1.0.6** - 파일 스트리밍 라이브러리
+- **Streamix 2.0.0** - 파일 스트리밍 라이브러리
 - **H2 / PostgreSQL / MySQL** - 데이터베이스 (선택)
 - **Thymeleaf** - 대시보드 UI
 - **FFmpeg** - 비디오 썸네일 생성
@@ -255,3 +351,9 @@ docker run -p 8080:8080 simple-file-service
 ## 📄 License
 
 MIT License
+
+---
+
+<p align="center">
+  Made by <a href="https://github.com/junhyeong9812">junhyeong9812</a>
+</p>
